@@ -1,49 +1,66 @@
 import torch, functools, inspect
 
 
-class ShapeDict(dict):
+class Binding:
+    def __init__(self, label, value, tensor_name, tensor_shape):
+        self.label = label
+        self.value = value
+        self.tensor_name = tensor_name
+        self.tensor_shape = tensor_shape
+
+class ShapeChecker:
     def __init__(self):
-        super(ShapeDict, self).__init__()
+        self.d = dict()
 
     def update(self, other):
-        for key in other.keys():
-            if key in self and not self[key] == other[key]:
-                raise LabeledShapeError(key, self[key], other[key])
+        if isinstance(other, ShapeChecker):
+            other = other.d
+
+        for label in other.keys():
+            if label in self.d:
+                binding = self.d[label]
+                new_binding = other[label]
+
+                if not binding.value == new_binding.value:
+                    raise LabeledShapeError(label, binding, new_binding)
             else:
-                self[key] = other[key]
+                self.d[label] = other[label]
                 
+
 class ShapeError(Exception):
     pass
 
 
 class SizeMismatch(ShapeError):
-    def __init__(self, dim, expected, found):
+    def __init__(self, dim, expected, found, tensor_name):
         self.dim = dim
         self.expected = expected
         self.found = found
-        self.param_name = None
+        self.tensor_name = tensor_name
 
     def __str__(self):
         fmt = "Size mismatch on dimension {} of argument `{}` (found {}, expected {})"
-        msg = fmt.format(self.dim, self.param_name, self.found, self.expected)
+        msg = fmt.format(self.dim, self.tensor_name, self.found, self.expected)
         return msg
 
 
 class LabeledShapeError(ShapeError):
-    def __init__(self, label, prev_val, new_val):
+    def __init__(self, label, prev_binding, new_binding):
         self.label = label
-        self.prev_val = prev_val
-        self.new_val = new_val
-        self.param_name = None
+        self.prev_binding = prev_binding
+        self.new_binding = new_binding
 
     def __str__(self):
-        fmt = ("Label `{}` already had dimension {} bound to it, "
-               "but it appears with dimension {} in tensor {}")
-        msg = fmt.format(self.label, self.prev_val, self.new_val, self.param_name)
+        fmt = ("Label `{}` already had dimension {} bound to it (based on tensor {}"
+               "of shape {}), but it appears with dimension {} in tensor {}")
+        msg = fmt.format(
+            self.label, self.prev_binding.value, self.prev_binding.tensor_name,
+            self.prev_binding.shape, self.new_binding.value, self.new_binding.tensor_name
+        )
         return msg
 
 
-def get_bindings(tensor, annotation):
+def get_bindings(tensor, annotation, tensor_name=None):
     n_ellipsis = annotation.count(...)
     if n_ellipsis > 1:
         # TODO: check this condition earlier
@@ -55,12 +72,12 @@ def get_bindings(tensor, annotation):
         msg = fmt.format(annotation, tensor.shape, len(annotation), len(tensor.shape))
         raise ShapeError(msg)
 
-    bindings = ShapeDict()
+    bindings = ShapeChecker()
     # check if dimensions match, one by one
     for i, (dim, anno) in enumerate(zip(tensor.shape, annotation)):
         if isinstance(anno, str):
             # named wildcard, add to dict
-            bindings.update({anno: dim})
+            bindings.update({anno: Binding(anno, dim, tensor_name, tensor.shape)})
         elif anno == ...:
             # ellipsis - done checking from the front, skip to checking in reverse
             break
@@ -69,7 +86,7 @@ def get_bindings(tensor, annotation):
                 # anonymous wildcard dimension, continue
                 continue
             else:
-                raise SizeMismatch(i, anno, dim)
+                raise SizeMismatch(i, anno, dim, tensor_name)
 
     if n_ellipsis == 0:
         # no ellipsis - we don't have to go in reverse
@@ -79,7 +96,7 @@ def get_bindings(tensor, annotation):
     for i, (dim, anno) in enumerate(zip(tensor.shape[::-1], annotation[::-1])):
         if isinstance(anno, str):
             # named wildcard, add to dict
-            bindings.update({anno: dim})
+            bindings.update({anno: Binding(anno, dim, tensor_name, tensor.shape)})
         elif anno == ...:
             # ellipsis - done checking from the back, return
             return bindings
@@ -104,27 +121,21 @@ def dimchecked(func):
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
         # check input
-        shape_bindings = ShapeDict()
+        shape_bindings = ShapeChecker()
         for i, arg in enumerate(args):
             if i in checked_parameters:
                 param = checked_parameters[i]
-                try:
-                    shapes = get_bindings(arg, param.annotation)
-                    shape_bindings.update(shapes)
-                except ShapeError as e:
-                    e.param_name = param.name
-                    raise
+                shapes = get_bindings(arg, param.annotation, tensor_name=param.name)
+                shape_bindings.update(shapes)
 
         result = func(*args, **kwargs)
 
         if isinstance(sig.return_annotation, list):
             # single tensor output like f() -> [3, 6]
-            try:
-                shapes = get_bindings(result, sig.return_annotation)
-                shape_bindings.update(shapes)
-            except ShapeError as e:
-                e.param_name = '<return value>'
-                raise
+            shapes = get_bindings(
+                result, sig.return_annotation, tensor_name='<return value>'
+            )
+            shape_bindings.update(shapes)
         elif isinstance(sig.return_annotation, tuple):
             # tuple output like f() -> ([3, 6], ..., [6, 5])
             for i, anno in enumerate(sig.return_annotation):
@@ -132,12 +143,10 @@ def dimchecked(func):
                     # skip
                     continue
 
-                try:
-                    shapes = get_bindings(result, anno)
-                    shape_bindings.update(shapes)
-                except ShapeError as e:
-                    e.param_name = '<return value {}>'.format(i)
-                    raise
+                shapes = get_bindings(
+                    result, anno, param_name='<return value {}>'.format(i)
+                )
+                shape_bindings.update(shapes)
 
         return result
 
