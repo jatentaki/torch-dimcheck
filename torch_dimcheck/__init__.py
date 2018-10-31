@@ -25,6 +25,10 @@ class ShapeChecker:
                     raise LabeledShapeError(label, binding, new_binding)
             else:
                 self.d[label] = other[label]
+
+    def check(self, tensor, annotation, name=None):
+        bindings = get_bindings(tensor, annotation, tensor_name=name)
+        self.update(bindings)
                 
 
 class ShapeError(Exception):
@@ -55,7 +59,8 @@ class LabeledShapeError(ShapeError):
                "of shape {}), but it appears with dimension {} in tensor {}")
         msg = fmt.format(
             self.label, self.prev_binding.value, self.prev_binding.tensor_name,
-            self.prev_binding.shape, self.new_binding.value, self.new_binding.tensor_name
+            self.prev_binding.shape, self.new_binding.value,
+            self.new_binding.tensor_name
         )
         return msg
 
@@ -125,7 +130,9 @@ def dimchecked(func):
         for i, arg in enumerate(args):
             if i in checked_parameters:
                 param = checked_parameters[i]
-                shapes = get_bindings(arg, param.annotation, tensor_name=param.name)
+                shapes = get_bindings(
+                    arg, param.annotation, tensor_name=param.name
+                )
                 shape_bindings.update(shapes)
 
         result = func(*args, **kwargs)
@@ -144,7 +151,7 @@ def dimchecked(func):
                     continue
 
                 shapes = get_bindings(
-                    result, anno, param_name='<return value {}>'.format(i)
+                    result, anno, tensor_name='<return value {}>'.format(i)
                 )
                 shape_bindings.update(shapes)
 
