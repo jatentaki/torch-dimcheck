@@ -115,7 +115,7 @@ def get_bindings(tensor, annotation, tensor_name=None):
                 # anonymous wildcard dimension, continue
                 continue
             else:
-                raise SizeMismatch(len(annotation) - i - 1, anno, dim, tensor_name)
+                raise SizeMismatch(len(tensor.shape) - i - 1, anno, dim, tensor_name)
 
     raise AssertionError("Arrived at the end of procedure")
 
@@ -220,6 +220,18 @@ if __name__ == '__main__':
             msg = ("Label `a` already had dimension 5 bound to it "
                    "(based on tensor t1 of shape (3, 3, 5)), but it "
                    "appears with dimension 3 in tensor t2")
+            with self.assertRaises(ShapeError) as ex:
+                dimchecked(f)(t1, t2)
+            self.assertEqual(str(ex.exception), msg)
+
+        def test_fails_backward_just_ellipsis(self):
+            def f(t1: [..., 2], t2: [..., 2]):
+                pass
+                 
+            t1 = torch.randn(3, 3, 3, 2)
+            t2 = torch.randn(5, 3, 1, 5)
+
+            msg = "Size mismatch on dimension 3 of argument `t2` (found 5, expected 2)"
             with self.assertRaises(ShapeError) as ex:
                 dimchecked(f)(t1, t2)
             self.assertEqual(str(ex.exception), msg)
