@@ -59,13 +59,18 @@ class LabeledShapeError(ShapeError):
                "of shape {}), but it appears with dimension {} in tensor {}")
         msg = fmt.format(
             self.label, self.prev_binding.value, self.prev_binding.tensor_name,
-            self.prev_binding.shape, self.new_binding.value,
+            self.prev_binding.tensor_shape, self.new_binding.value,
             self.new_binding.tensor_name
         )
         return msg
 
 
 def get_bindings(tensor, annotation, tensor_name=None):
+    if not isinstance(tensor, torch.Tensor):
+        fmt = "Expected argument `{}` to be an instance of torch.Tensor, found {} instead"
+        msg = fmt.format(tensor_name, type(tensor))
+        raise ValueError(msg)
+
     n_ellipsis = annotation.count(...)
     if n_ellipsis > 1:
         # TODO: check this condition earlier
@@ -110,7 +115,7 @@ def get_bindings(tensor, annotation, tensor_name=None):
                 # anonymous wildcard dimension, continue
                 continue
             else:
-                raise SizeMismatch(len(annotation) - i, anno, dim)
+                raise SizeMismatch(len(annotation) - i, anno, dim, tensor_name)
 
     raise AssertionError("Arrived at the end of procedure")
 
