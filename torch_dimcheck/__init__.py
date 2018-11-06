@@ -55,11 +55,11 @@ class LabeledShapeError(ShapeError):
         self.new_binding = new_binding
 
     def __str__(self):
-        fmt = ("Label `{}` already had dimension {} bound to it (based on tensor {}"
+        fmt = ("Label `{}` already had dimension {} bound to it (based on tensor {} "
                "of shape {}), but it appears with dimension {} in tensor {}")
         msg = fmt.format(
             self.label, self.prev_binding.value, self.prev_binding.tensor_name,
-            self.prev_binding.tensor_shape, self.new_binding.value,
+            tuple(self.prev_binding.tensor_shape), self.new_binding.value,
             self.new_binding.tensor_name
         )
         return msg
@@ -79,7 +79,7 @@ def get_bindings(tensor, annotation, tensor_name=None):
     if len(annotation) != len(tensor.shape) and n_ellipsis == 0:
         # no ellipsis, dimensionality mismatch
         fmt = "Annotation {} differs in size from tensor shape {} ({} vs {})"
-        msg = fmt.format(annotation, tensor.shape, len(annotation), len(tensor.shape))
+        msg = fmt.format(annotation, tuple(tensor.shape), len(annotation), len(tensor.shape))
         raise ShapeError(msg)
 
     bindings = ShapeChecker()
@@ -115,7 +115,7 @@ def get_bindings(tensor, annotation, tensor_name=None):
                 # anonymous wildcard dimension, continue
                 continue
             else:
-                raise SizeMismatch(len(annotation) - i, anno, dim, tensor_name)
+                raise SizeMismatch(len(annotation) - i - 1, anno, dim, tensor_name)
 
     raise AssertionError("Arrived at the end of procedure")
 
@@ -198,6 +198,32 @@ if __name__ == '__main__':
                 dimchecked(f)(t1, t2)
             self.assertEqual(str(ex.exception), msg)
 
+        def test_fails_backward_ellipsis(self):
+            def f(t1: [3, ..., 2], t2: [5, ..., 3]):
+                pass
+                 
+            t1 = torch.randn(3, 3, 5)
+            t2 = torch.randn(5, 3, 3)
+
+            msg = "Size mismatch on dimension 2 of argument `t1` (found 5, expected 2)"
+            with self.assertRaises(ShapeError) as ex:
+                dimchecked(f)(t1, t2)
+            self.assertEqual(str(ex.exception), msg)
+
+        def test_fails_backward_ellipsis_wildcard(self):
+            def f(t1: [3, ..., 'a'], t2: [5, ..., 'a']):
+                pass
+                 
+            t1 = torch.randn(3, 3, 5)
+            t2 = torch.randn(5, 3, 3)
+
+            msg = ("Label `a` already had dimension 5 bound to it "
+                   "(based on tensor t1 of shape (3, 3, 5)), but it "
+                   "appears with dimension 3 in tensor t2")
+            with self.assertRaises(ShapeError) as ex:
+                dimchecked(f)(t1, t2)
+            self.assertEqual(str(ex.exception), msg)
+
         def test_fails_wrong_return(self):
             def f(t1: [3, 5], t2: [5, 3]) -> [5]:
                 return (t1.transpose(0, 1) * t2).sum(dim=0)
@@ -240,4 +266,4 @@ if __name__ == '__main__':
 
             self.assertTrue((f(t1, t2) == dimchecked(f)(t1, t2)).all())
 
-    unittest.main(failfast=True)
+    unittest.main()
