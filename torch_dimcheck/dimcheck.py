@@ -118,12 +118,12 @@ def dimchecked(func):
         elif isinstance(sig.return_annotation, tuple):
             # tuple output like f() -> ([3, 6], ..., [6, 5])
             for i, anno in enumerate(sig.return_annotation):
-                if tensor == ...:
+                if anno == ...:
                     # skip
                     continue
 
                 shapes = get_bindings(
-                    result, anno, tensor_name='<return value {}>'.format(i)
+                    result[i], anno, tensor_name='<return value {}>'.format(i)
                 )
                 shape_bindings.update(shapes)
 
