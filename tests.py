@@ -1,5 +1,5 @@
 import unittest, torch
-from torch_dimcheck import dimchecked
+from torch_dimcheck import dimchecked, ttuple
 from torch_dimcheck.errors import ShapeError
 
 class ShapeCheckedTests(unittest.TestCase):
@@ -112,5 +112,29 @@ class ShapeCheckedTests(unittest.TestCase):
         t2 = torch.randn(3, 1, 2, 5)
 
         self.assertTrue((f(t1, t2) == dimchecked(f)(t1, t2)).all())
+
+class TensorTupleTests(unittest.TestCase):
+    def test_define(self):
+        @ttuple
+        class Tuple:
+            xy: [2, 'N']
+            lp: ['N']
+
+    def test_construct_correct(self):
+        @ttuple
+        class Tuple:
+            xy: [2, 'N']
+            lp: ['N']
+
+        tuple_ = Tuple(torch.randn(2, 10), torch.randn(10))
+
+    def test_construct_incorrect(self):
+        @ttuple
+        class Tuple:
+            xy: [2, 'N']
+            lp: ['N']
+
+        with self.assertRaises(ShapeError):
+            tuple_ = Tuple(torch.randn(3, 10), torch.randn(10))
 
 unittest.main()
