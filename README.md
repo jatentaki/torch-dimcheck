@@ -17,7 +17,7 @@ import torch
 from torch_dimcheck import dimchecked
 
 @dimchecked
-def matmul(a: ['X', 'Y'], ['Y', 'Z']) -> ['X', 'Z']:
+def matmul(a: ['X', 'Y'], b: ['Y', 'Z']) -> ['X', 'Z']:
   return torch.matmul(a, b)
 
 a = torch.randn(3, 4)
