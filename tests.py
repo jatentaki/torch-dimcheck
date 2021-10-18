@@ -50,7 +50,7 @@ class ShapeCheckedTests(unittest.TestCase):
         dimchecked(f)(t1, t2)
 
     def test_fails_wrong_return(self):
-        def f(t1: A['3 5'], t2: ['5 3']) -> A['5']:
+        def f(t1: A['3 5'], t2: A['5 3']) -> A['5']:
             return (t1.transpose(0, 1) * t2).sum(dim=0)
              
         t1 = torch.randn(3, 5)
@@ -60,7 +60,7 @@ class ShapeCheckedTests(unittest.TestCase):
             dimchecked(f)(t1, t2)
 
     def test_fails_return_label_mismatch(self):
-        def f(t1: ['5 a'], t2: A['a 5']) -> A['a']:
+        def f(t1: A['5 a'], t2: A['a 5']) -> A['a']:
             return (t1.transpose(0, 1) * t2).sum(dim=0)
              
         t1 = torch.randn(5, 3)
@@ -68,6 +68,29 @@ class ShapeCheckedTests(unittest.TestCase):
 
         with self.assertRaises(ShapeError):
             dimchecked(f)(t1, t2)
+
+    def test_fails_tuple_return_label_mismatch(self):
+        def f(t1: A['a b'], t2: A['b a']) -> (A['b b'], A['a a']):
+            ab = t1 @ t2
+            ba = t1.T @ t2.T
+            return ab, ba
+             
+        t1 = torch.randn(5, 3)
+        t2 = torch.randn(3, 5)
+
+        with self.assertRaises(ShapeError):
+            dimchecked(f)(t1, t2)
+
+    def test_succeeds_tuple_return(self):
+        def f(t1: A['a b'], t2: A['b a']) -> (A['a a'], A['b b']):
+            ab = t1 @ t2
+            ba = t1.T @ t2.T
+            return ab, ba
+             
+        t1 = torch.randn(5, 3)
+        t2 = torch.randn(3, 5)
+
+        dimchecked(f)(t1, t2)
 
 #    def test_fails_backward_ellipsis(self):
 #        def f(t1: [3, ..., 2], t2: [5, ..., 3]):

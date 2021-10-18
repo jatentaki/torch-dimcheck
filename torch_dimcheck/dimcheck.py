@@ -163,6 +163,12 @@ def dimchecked(func):
 
         if not isinstance(signature.return_annotation, tuple):
             checker_state.update('<return>', result, signature.return_annotation)
+        else:
+            if len(signature.return_annotation) != len(result):
+                raise TypeError(f'Return should have {len(signature.return_annotation)} elements, found {len(result)}.')
+
+            for i, (value, annotation) in enumerate(zip(result, signature.return_annotation)):
+                checker_state.update(f'<return {i}>', value, annotation)
 
         maybe_error = checker_state.check()
         if maybe_error is not None:
