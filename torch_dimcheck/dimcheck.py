@@ -1,132 +1,152 @@
-import torch, functools, inspect
+import inspect
+import torch
+from dataclasses import dataclass
+from typing import Union, Optional, Tuple, Tuple, Dict, Set, List
 
-from .errors import ShapeError, SizeMismatchError, LabeledShapeError
+@dataclass(unsafe_hash=True)
+class Token:
+    label: Union[int, str]
+    
+    @classmethod
+    def from_str(cls, string: str) -> 'Token':
+        try:
+            return cls(int(string))
+        except ValueError:
+            return cls(string)
 
-class Binding:
-    def __init__(self, label, value, tensor_name, tensor_shape):
-        self.label = label
-        self.value = value
-        self.tensor_name = tensor_name
-        self.tensor_shape = tensor_shape
+    @classmethod
+    def tokenize(cls, annotation: str) -> Tuple['Token']:
+        return tuple(cls.from_str(s) for s in annotation.split())
 
-class ShapeChecker:
-    def __init__(self):
-        self.d = dict()
+ParseDict = Dict[Union[str, int], int]
 
-    def update(self, other):
-        if isinstance(other, ShapeChecker):
-            other = other.d
+@dataclass(unsafe_hash=True)
+class A:
+    raw: str
+    labels: Tuple[Token]
+    
+    def __call__(self):
+        # this is just to fake the callable interface for typing
+        return NotImplemented()
+    
+    @classmethod
+    def __class_getitem__(cls, annotation: str) -> 'A':
+        return A(annotation, Token.tokenize(annotation))
 
-        for label in other.keys():
-            if label in self.d:
-                binding = self.d[label]
-                new_binding = other[label]
+    def parse_shape(self, shape: Tuple[int]) -> ParseDict:
+        parse_dict: ParseDict = {}
+            
+        if len(shape) != len(self.labels):
+            raise TypeError(f'Got shape of length {len(shape)} with an '
+                            f'annotation of length {(len(self.labels))} '
+                            f'({self.raw}) vs ({shape}).')
+        
+        for dim, label in zip(shape, self.labels):
+            parse_dict[label.label] = dim
+        
+        return parse_dict
+    
+    def render(self, parse_dict: ParseDict) -> str:
+        tokens = []
+        for label in self.labels:
+            value = parse_dict.get(label.label, '?')
+            tokens.append(f'{label.label}={value}')
+        return ' '.join(tokens)
 
-                if not binding.value == new_binding.value:
-                    raise LabeledShapeError(label, binding, new_binding)
+@dataclass
+class ConstError:
+    tensor_name: str
+    expected: int
+    found: int
+    
+    def __str__(self) -> str:
+        return f'{self.tensor_name}: {self.expected} != {self.found}'
+
+@dataclass
+class Inconsistency:
+    label: str
+    values: Set[int]
+    
+    def __str__(self) -> str:
+        return f'Inconsistency: {self.label} = {list(self.values)}'
+
+class ShapeError(TypeError):
+    def __init__(self, issues: List[Union[ConstError, Inconsistency]], context: List[str]):
+        self.issues = issues
+        self.context = context
+    
+    def __str__(self) -> str:
+        issues = '\n\t'.join(str(i) for i in self.issues)
+        context = '\n\t'.join(self.context)
+        return f'Issues:\n\t{issues}\nContext:\n\t{context}'
+
+def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
+    issues = []
+    
+    bindings: Dict[str, Set[int]] = {}
+        
+    for tensor_name, tensor_parses in parses.items():
+        for label, value in tensor_parses.items():
+            if isinstance(label, int):
+                if label != value:
+                    issues.append(ConstError(tensor_name=tensor_name, expected=label, found=value))
+            elif isinstance(label, str):
+                bindings.setdefault(label, set()).add(value)
             else:
-                self.d[label] = other[label]
+                raise AssertionError('Unreachable')
+    
+    for label, values in bindings.items():
+        if len(values) > 1:
+            issues.append(Inconsistency(label=label, values=values))
+        else:
+            assert len(values) == 1
+    
+    if not issues:
+        return None
+    
+    return ShapeError(issues, context=[])
+    
+def _zip_args_and_labels(args, signature):
+    for arg, parameter in zip(args, signature.parameters.values()):
+        yield parameter.name, arg, parameter.annotation
 
-    def check(self, tensor, annotation, name=None):
-        bindings = get_bindings(tensor, annotation, tensor_name=name)
-        self.update(bindings)
-
-
-def get_bindings(tensor, annotation, tensor_name=None):
-    if not isinstance(tensor, torch.Tensor):
-        fmt = "Expected argument `{}` to be an instance of torch.Tensor, found {} instead"
-        msg = fmt.format(tensor_name, type(tensor))
-        raise ValueError(msg)
-
-    n_ellipsis = annotation.count(...)
-    if n_ellipsis > 1:
-        # TODO: check this condition earlier
-        raise ValueError("Only one ellipsis can be used per annotation")
-
-    if len(annotation) != len(tensor.shape) and n_ellipsis == 0:
-        # no ellipsis, dimensionality mismatch
-        fmt = "Annotation {} differs in size from tensor shape {} ({} vs {})"
-        msg = fmt.format(annotation, tuple(tensor.shape), len(annotation), len(tensor.shape))
-        raise ShapeError(msg)
-
-    bindings = ShapeChecker()
-    # check if dimensions match, one by one
-    for i, (dim, anno) in enumerate(zip(tensor.shape, annotation)):
-        if isinstance(anno, str):
-            # named wildcard, add to dict
-            bindings.update({anno: Binding(anno, dim, tensor_name, tensor.shape)})
-        elif anno == ...:
-            # ellipsis - done checking from the front, skip to checking in reverse
-            break
-        elif isinstance(anno, int) and anno != dim:
-            if anno == -1:
-                # anonymous wildcard dimension, continue
-                continue
-            else:
-                raise SizeMismatchError(i, anno, dim, tensor_name)
-
-    if n_ellipsis == 0:
-        # no ellipsis - we don't have to go in reverse
-        return bindings
-
-    # there was an ellipsis, we have to check in reverse
-    for i, (dim, anno) in enumerate(zip(tensor.shape[::-1], annotation[::-1])):
-        if isinstance(anno, str):
-            # named wildcard, add to dict
-            bindings.update({anno: Binding(anno, dim, tensor_name, tensor.shape)})
-        elif anno == ...:
-            # ellipsis - done checking from the back, return
-            return bindings
-        elif isinstance(anno, int) and anno != dim:
-            if anno == -1:
-                # anonymous wildcard dimension, continue
-                continue
-            else:
-                raise SizeMismatchError(len(tensor.shape) - i - 1, anno, dim, tensor_name)
-
-    raise AssertionError("Arrived at the end of procedure")
-
+def _is_optional_annotation(type_) -> bool:
+    return hasattr(type_, '__origin__') \
+        and type_.__origin__ == Union \
+        and len(type_.__args__) == 2 \
+        and type_.__args__[1] == type(None) \
+        and isinstance(type_.__args__[0], A)
 
 def dimchecked(func):
-    sig = inspect.signature(func)
-
-    checked_parameters = dict()
-    for i, parameter in enumerate(sig.parameters.values()):
-        if isinstance(parameter.annotation, list):
-            checked_parameters[i] = parameter
-
-    @functools.wraps(func)
+    signature = inspect.signature(func)
+    
     def wrapped(*args, **kwargs):
-        # check input
-        shape_bindings = ShapeChecker()
-        for i, arg in enumerate(args):
-            if i in checked_parameters:
-                param = checked_parameters[i]
-                shapes = get_bindings(
-                    arg, param.annotation, tensor_name=param.name
-                )
-                shape_bindings.update(shapes)
+        parses: Dict[str, ParseDict] = {}
+        annotations: Dict[str, A] = {}
+        
+        for name, value, annotation in _zip_args_and_labels(args, signature):
+            if _is_optional_annotation(annotation):
+                if value is None:
+                    continue
+                else:
+                    annotation = annotation.__args__[0]
+
+            if not isinstance(annotation, A):
+                continue
+            
+            if not isinstance(value, torch.Tensor):
+                raise TypeError(f'Expected {name} to be a torch.Tensor, found {type(value)}.')
+            
+            parses[name] = annotation.parse_shape(value.shape)
+            annotations[name] = annotation
+        
+        maybe_error = check_consistency(parses)
+        if maybe_error is not None:
+            for name, annotation in annotations.items():
+                rendered = annotation.render(parses[name])
+                maybe_error.context.append(f'{name}: {rendered}')
+            raise maybe_error
 
         result = func(*args, **kwargs)
-
-        if isinstance(sig.return_annotation, list):
-            # single tensor output like f() -> [3, 6]
-            shapes = get_bindings(
-                result, sig.return_annotation, tensor_name='<return value>'
-            )
-            shape_bindings.update(shapes)
-        elif isinstance(sig.return_annotation, tuple):
-            # tuple output like f() -> ([3, 6], ..., [6, 5])
-            for i, anno in enumerate(sig.return_annotation):
-                if anno == ...:
-                    # skip
-                    continue
-
-                shapes = get_bindings(
-                    result[i], anno, tensor_name='<return value {}>'.format(i)
-                )
-                shape_bindings.update(shapes)
-
         return result
-
     return wrapped
