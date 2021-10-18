@@ -1,6 +1,6 @@
 import inspect
 import torch
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Union, Optional, Tuple, Tuple, Dict, Set, List
 
 @dataclass(unsafe_hash=True)
@@ -117,36 +117,49 @@ def _is_optional_annotation(type_) -> bool:
         and type_.__args__[1] == type(None) \
         and isinstance(type_.__args__[0], A)
 
+@dataclass
+class CheckerState:
+    parses: Dict[str, ParseDict] = field(default_factory=dict)
+    annotations: Dict[str, A] = field(default_factory=dict)
+
+    def update(self, name, value, annotation) -> None:
+        if _is_optional_annotation(annotation):
+            if value is None:
+                return
+            else:
+                annotation = annotation.__args__[0]
+
+        if not isinstance(annotation, A):
+            return
+        
+        if not isinstance(value, torch.Tensor):
+            raise TypeError(f'Expected {name} to be a torch.Tensor, found {type(value)}.')
+        
+        self.parses[name] = annotation.parse_shape(value.shape)
+        self.annotations[name] = annotation
+
+    def check(self) -> Optional[ShapeError]:
+        maybe_error = check_consistency(self.parses)
+        if maybe_error is not None:
+            for name, annotation in self.annotations.items():
+                rendered = annotation.render(self.parses[name])
+                maybe_error.context.append(f'{name}: {rendered}')
+        return maybe_error
+         
 def dimchecked(func):
     signature = inspect.signature(func)
     
     def wrapped(*args, **kwargs):
-        parses: Dict[str, ParseDict] = {}
-        annotations: Dict[str, A] = {}
+        checker_state = CheckerState()
         
         for name, value, annotation in _zip_args_and_labels(args, signature):
-            if _is_optional_annotation(annotation):
-                if value is None:
-                    continue
-                else:
-                    annotation = annotation.__args__[0]
-
-            if not isinstance(annotation, A):
-                continue
-            
-            if not isinstance(value, torch.Tensor):
-                raise TypeError(f'Expected {name} to be a torch.Tensor, found {type(value)}.')
-            
-            parses[name] = annotation.parse_shape(value.shape)
-            annotations[name] = annotation
+            checker_state.update(name, value, annotation)
         
-        maybe_error = check_consistency(parses)
+        maybe_error = checker_state.check()
         if maybe_error is not None:
-            for name, annotation in annotations.items():
-                rendered = annotation.render(parses[name])
-                maybe_error.context.append(f'{name}: {rendered}')
             raise maybe_error
 
         result = func(*args, **kwargs)
+
         return result
     return wrapped
