@@ -161,5 +161,12 @@ def dimchecked(func):
 
         result = func(*args, **kwargs)
 
+        if not isinstance(signature.return_annotation, tuple):
+            checker_state.update('<return>', result, signature.return_annotation)
+
+        maybe_error = checker_state.check()
+        if maybe_error is not None:
+            raise maybe_error
+
         return result
     return wrapped
