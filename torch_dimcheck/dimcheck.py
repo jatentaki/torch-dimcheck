@@ -32,7 +32,8 @@ class Token:
         tokens = tuple(cls.from_str(s) for s in annotation.split())
         # there can be at most one wildcard
         if sum((1 if t.is_wildcard else 0) for t in tokens) > 1:
-            raise TypeError(f'Annotation `{annotation}` cannot contain more than 1 wildcard.')
+            raise TypeError(f'Annotation `{annotation}` cannot '
+                             'contain more than 1 wildcard.')
         return tokens
 
 ParseDict = Dict[Union[str, int], Union[int, Tuple[int]]]
@@ -70,8 +71,8 @@ class A:
             for dim, token in zip(shape, self.tokens):
                 parse_dict[token.label] = dim
         else:
-            # one wildcard present: associate tokens with dims from the front, then from the back
-            # and the remainder belongs to the wildcard
+            # one wildcard present: associate tokens with dims from the front,
+            # then from the back and the remainder belongs to the wildcard
             s_t, s_s = 0, 0
             e_t, e_s = n_token-1, n_shape-1
 
@@ -115,7 +116,11 @@ class Inconsistency:
         return f'Inconsistency: {self.label} = {list(self.values)}'
 
 class ShapeError(TypeError):
-    def __init__(self, issues: List[Union[ConstError, Inconsistency]], context: List[str]):
+    def __init__(
+        self,
+        issues: List[Union[ConstError, Inconsistency]],
+        context: List[str],
+    ):
         self.issues = issues
         self.context = context
     
@@ -133,7 +138,11 @@ def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
         for label, value in tensor_parses.items():
             if isinstance(label, int):
                 if label != value:
-                    issues.append(ConstError(tensor_name=tensor_name, expected=label, found=value))
+                    issues.append(ConstError(
+                        tensor_name=tensor_name,
+                        expected=label,
+                        found=value,
+                    ))
             elif isinstance(label, str):
                 bindings.setdefault(label, set()).add(value)
             else:
@@ -179,7 +188,8 @@ class CheckerState:
             return
         
         if not isinstance(value, torch.Tensor):
-            raise TypeError(f'Expected {name} to be a torch.Tensor, found {type(value)}.')
+            raise TypeError(f'Expected {name} to be a torch.Tensor, '
+                            f'found {type(value)}.')
         
         self.parses[name] = annotation.parse_shape(value.shape)
         self.annotations[name] = annotation
@@ -211,9 +221,14 @@ def dimchecked(func):
             checker_state.update('<return>', result, signature.return_annotation)
         else:
             if len(signature.return_annotation) != len(result):
-                raise TypeError(f'Return should have {len(signature.return_annotation)} elements, found {len(result)}.')
+                raise TypeError(f'Return should have '
+                                f'{len(signature.return_annotation)} '
+                                f'elements, found {len(result)}.')
 
-            for i, (value, annotation) in enumerate(zip(result, signature.return_annotation)):
+            for i, (value, annotation) in enumerate(zip(
+                                            result,
+                                            signature.return_annotation,
+                                          )):
                 checker_state.update(f'<return {i}>', value, annotation)
 
         maybe_error = checker_state.check()
