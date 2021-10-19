@@ -172,6 +172,10 @@ def _is_optional_annotation(type_) -> bool:
         and type_.__args__[1] == type(None) \
         and isinstance(type_.__args__[0], A)
 
+def _is_typelike(obj: object) -> bool:
+    return isinstance(obj, type) or \
+           getattr(obj, '__module__', None) == 'typing'
+
 @dataclass
 class CheckerState:
     parses: Dict[str, ParseDict] = field(default_factory=dict)
@@ -185,6 +189,10 @@ class CheckerState:
                 annotation = annotation.__args__[0]
 
         if not isinstance(annotation, A):
+            if not _is_typelike(annotation):
+                raise TypeError(f'Annotations used with @dimchecked can only '
+                                f'be types or std::typing objects, found '
+                                f'{annotation=} ({type(annotation)=}).')
             return
         
         if not isinstance(value, torch.Tensor):

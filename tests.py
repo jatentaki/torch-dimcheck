@@ -130,6 +130,17 @@ class ShapeCheckedTests(unittest.TestCase):
         with self.assertRaises(ShapeError) as ex:
             dimchecked(f)(t1, t2)
 
+    def test_fails_non_type_annotation(self):
+        def f(t1: A['b... 3'], t2: ['b... 3']):
+            pass
+             
+        t1 = torch.randn(3, 3, 3)
+        t2 = torch.randn(3, 5, 3)
+
+        with self.assertRaises(TypeError) as ex:
+            dimchecked(f)(t1, t2)
+        self.assertTrue('std::typing' in str(ex.exception))
+
 #    def test_fails_backward_ellipsis_wildcard(self):
 #        def f(t1: [3, ..., 'a'], t2: [5, ..., 'a']):
 #            pass
