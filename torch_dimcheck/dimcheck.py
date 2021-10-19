@@ -29,7 +29,11 @@ class Token:
 
     @classmethod
     def tokenize(cls, annotation: str) -> Tuple['Token']:
-        return tuple(cls.from_str(s) for s in annotation.split())
+        tokens = tuple(cls.from_str(s) for s in annotation.split())
+        # there can be at most one wildcard
+        if sum((1 if t.is_wildcard else 0) for t in tokens) > 1:
+            raise TypeError(f'Annotation `{annotation}` cannot contain more than 1 wildcard.')
+        return tokens
 
 ParseDict = Dict[Union[str, int], Union[int, Tuple[int]]]
 

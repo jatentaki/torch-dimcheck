@@ -92,6 +92,11 @@ class ShapeCheckedTests(unittest.TestCase):
 
         dimchecked(f)(t1, t2)
 
+    def test_fails_two_wildcards(self):
+        with self.assertRaises(TypeError) as ex:
+            def f(t1: A['3 ...a ...b 2'], t2: A['5 3']):
+                pass
+
 #    def test_fails_backward_ellipsis(self):
 #        def f(t1: [3, ..., 2], t2: [5, ..., 3]):
 #            pass
