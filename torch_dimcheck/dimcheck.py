@@ -65,8 +65,28 @@ class A:
                             f'annotation of length {(len(self.tokens))} '
                             f'({self.raw}) vs ({shape}).')
         
-        for dim, token in zip(shape, self.tokens):
-            parse_dict[token.label] = dim
+        if not has_wild:
+            # no wildcards -> one token corresponds to one dim -> just zip together
+            for dim, token in zip(shape, self.tokens):
+                parse_dict[token.label] = dim
+        else:
+            # one wildcard present: associate tokens with dims from the front, then from the back
+            # and the remainder belongs to the wildcard
+            s_t, s_s = 0, 0
+            e_t, e_s = n_token-1, n_shape-1
+
+            while not self.tokens[s_t].is_wildcard:
+                parse_dict[self.tokens[s_t].label] = shape[s_s]
+                s_t += 1
+                s_s += 1
+
+            while not self.tokens[e_t].is_wildcard:
+                parse_dict[self.tokens[e_t].label] = shape[e_s]
+                e_t -= 1
+                e_s -= 1
+
+            assert s_t == e_t
+            parse_dict[self.tokens[s_t].label] = shape[s_s:e_s+1]
         
         return parse_dict
     

@@ -97,18 +97,30 @@ class ShapeCheckedTests(unittest.TestCase):
             def f(t1: A['3 ...a ...b 2'], t2: A['5 3']):
                 pass
 
-#    def test_fails_backward_ellipsis(self):
-#        def f(t1: [3, ..., 2], t2: [5, ..., 3]):
-#            pass
-#             
-#        t1 = torch.randn(3, 3, 5)
-#        t2 = torch.randn(5, 3, 3)
-#
-#        msg = "Size mismatch on dimension 2 of argument `t1` (found 5, expected 2)"
-#        with self.assertRaises(ShapeError) as ex:
-#            dimchecked(f)(t1, t2)
-#        self.assertEqual(str(ex.exception), msg)
-#
+    def test_succeeds_consistent_wildcards(self):
+        def f(t1: A['b... 3'], t2: A['b... 3']):
+            pass
+             
+        t1 = torch.randn(3, 2, 3)
+        t2 = torch.randn(3, 2, 3)
+
+        dimchecked(f)(t1, t2)
+
+        def g(t1: A['b... a 3'], t2: A['b... a 3']):
+            pass
+
+        dimchecked(g)(t1, t2)
+
+    def test_fails_inconsistent_wildcards(self):
+        def f(t1: A['b... 3'], t2: A['b... 3']):
+            pass
+             
+        t1 = torch.randn(3, 3, 3)
+        t2 = torch.randn(3, 5, 3)
+
+        with self.assertRaises(ShapeError) as ex:
+            dimchecked(f)(t1, t2)
+
 #    def test_fails_backward_ellipsis_wildcard(self):
 #        def f(t1: [3, ..., 'a'], t2: [5, ..., 'a']):
 #            pass
