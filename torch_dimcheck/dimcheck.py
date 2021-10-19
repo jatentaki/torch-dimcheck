@@ -53,7 +53,14 @@ class A:
     def parse_shape(self, shape: Tuple[int]) -> ParseDict:
         parse_dict: ParseDict = {}
             
-        if len(shape) != len(self.tokens):
+        n_shape = len(shape)
+        n_token = len(self.tokens)
+        has_wild = any(t.is_wildcard for t in self.tokens)
+
+        if has_wild and (n_shape < n_token - 1):
+            raise TypeError(f'Got shape {shape} with an annotation {self.raw}')
+
+        if not has_wild and n_shape != n_token:
             raise TypeError(f'Got shape of length {len(shape)} with an '
                             f'annotation of length {(len(self.tokens))} '
                             f'({self.raw}) vs ({shape}).')
