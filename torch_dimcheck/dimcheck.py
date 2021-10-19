@@ -6,7 +6,7 @@ from typing import Union, Optional, Tuple, Tuple, Dict, Set, List
 
 LABEL_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*')
 FIXED_RE = re.compile('\d+')
-WCARD_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*\.\.\.')
+WCARD_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\.\.\.')
 
 @dataclass(unsafe_hash=True)
 class Token:
@@ -140,6 +140,8 @@ def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
                 raise AssertionError('Unreachable')
     
     for label, values in bindings.items():
+        if label == '...':
+            continue # t
         if len(values) > 1:
             issues.append(Inconsistency(label=label, values=values))
         else:

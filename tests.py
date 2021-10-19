@@ -111,6 +111,15 @@ class ShapeCheckedTests(unittest.TestCase):
 
         dimchecked(g)(t1, t2)
 
+    def test_succeeds_anonymous_wildcards(self):
+        def f(t1: A['... 3'], t2: A['... 3']):
+            pass
+             
+        t1 = torch.randn(3, 2, 3)
+        t2 = torch.randn(3, 4, 3)
+
+        dimchecked(f)(t1, t2)
+
     def test_fails_inconsistent_wildcards(self):
         def f(t1: A['b... 3'], t2: A['b... 3']):
             pass
