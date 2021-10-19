@@ -1,7 +1,12 @@
+import re
 import inspect
 import torch
 from dataclasses import dataclass, field
 from typing import Union, Optional, Tuple, Tuple, Dict, Set, List
+
+LABEL_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*')
+FIXED_RE = re.compile('\d+')
+WCARD_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*\.\.\.')
 
 @dataclass(unsafe_hash=True)
 class Token:
@@ -9,21 +14,29 @@ class Token:
     
     @classmethod
     def from_str(cls, string: str) -> 'Token':
-        try:
-            return cls(int(string))
-        except ValueError:
+        if match := FIXED_RE.match(string):
+            return cls(int(match.group(0)))
+        elif match := LABEL_RE.match(string):
             return cls(string)
+        elif match := WCARD_RE.match(string):
+            return cls(string)
+        else:
+            raise TypeError(f'`{string}` is not a valid token')
+
+    @property
+    def is_wildcard(self):
+        return isinstance(self.label, str) and '...' in self.label 
 
     @classmethod
     def tokenize(cls, annotation: str) -> Tuple['Token']:
         return tuple(cls.from_str(s) for s in annotation.split())
 
-ParseDict = Dict[Union[str, int], int]
+ParseDict = Dict[Union[str, int], Union[int, Tuple[int]]]
 
 @dataclass(unsafe_hash=True)
 class A:
     raw: str
-    labels: Tuple[Token]
+    tokens: Tuple[Token]
     
     def __call__(self):
         # this is just to fake the callable interface for typing
@@ -36,22 +49,22 @@ class A:
     def parse_shape(self, shape: Tuple[int]) -> ParseDict:
         parse_dict: ParseDict = {}
             
-        if len(shape) != len(self.labels):
+        if len(shape) != len(self.tokens):
             raise TypeError(f'Got shape of length {len(shape)} with an '
-                            f'annotation of length {(len(self.labels))} '
+                            f'annotation of length {(len(self.tokens))} '
                             f'({self.raw}) vs ({shape}).')
         
-        for dim, label in zip(shape, self.labels):
-            parse_dict[label.label] = dim
+        for dim, token in zip(shape, self.tokens):
+            parse_dict[token.label] = dim
         
         return parse_dict
     
     def render(self, parse_dict: ParseDict) -> str:
-        tokens = []
-        for label in self.labels:
-            value = parse_dict.get(label.label, '?')
-            tokens.append(f'{label.label}={value}')
-        return ' '.join(tokens)
+        binds = []
+        for token in self.tokens:
+            value = parse_dict.get(token.label, '?')
+            binds.append(f'{token.label}={value}')
+        return ' '.join(binds)
 
 @dataclass
 class ConstError:
