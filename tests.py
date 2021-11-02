@@ -162,41 +162,6 @@ class ShapeCheckedTests(unittest.TestCase):
             dimchecked(f)(t1, t2)
         self.assertTrue('std::typing' in str(ex.exception))
 
-    def test_fails_backward_ellipsis_wildcard(self):
-        def f(t1: A['3 x+ a'], t2: A['5 y+ a']):
-            pass
-             
-        t1 = torch.randn(3, 3, 5)
-        t2 = torch.randn(5, 3, 3)
-
-        with self.assertRaises(ShapeError) as ex:
-            dimchecked(f)(t1, t2)
-
-    def test_fails_backward_just_ellipsis(self):
-        def f(t1: A['x+ 2'], t2: A['y+ 2']):
-            pass
-             
-        t1 = torch.randn(3, 3, 3, 2)
-        t2 = torch.randn(3, 3, 3, 5)
-
-        with self.assertRaises(ShapeError) as ex:
-            dimchecked(f)(t1, t2)
-
-    def test_fails_two_ellipsis(self):
-        with self.assertRaises(TypeError) as ex:
-            def f(t1: A['x+ y+ 2'], t2: A['x+ 2']):
-                pass
-
-    def test_succeeds_ellipsis(self):
-        def f(t1: A['5 x+ a'], t2: A['a x+ 5']) -> A['a']:
-            return (t1.transpose(0, 3) * t2).sum(dim=(1, 2, 3))
-             
-
-        t1 = torch.randn(5, 1, 2, 3)
-        t2 = torch.randn(3, 1, 2, 5)
-
-        self.assertTrue((f(t1, t2) == dimchecked(f)(t1, t2)).all())
-
     def test_no_batch(self):
         ''' https://github.com/jatentaki/torch-dimcheck/issues/5 '''
         def f(t: A['B N 3']) -> A['B N 3']:
@@ -205,17 +170,6 @@ class ShapeCheckedTests(unittest.TestCase):
         t = torch.randn(2, 3)
         with self.assertRaises(TypeError):
             dimchecked(f)(t)
-
-    def test_wildcard_and_integer(self):
-        ''' https://github.com/jatentaki/torch-dimcheck/issues/4 '''
-        @dimchecked
-        def box_area(box: A['b+ 3 2']) -> A['b+']:
-            low, high = box.unbind(dim=-1)
-            x, y, z = (high - low).unbind(dim=-1)
-            return x * y * z
-
-        bbox = torch.tensor([[[0, 1], [0, 1], [0, 1]]])
-        box_area(bbox)
 
     def test_fewer_returns_than_declared(self):
         ''' https://github.com/jatentaki/torch-dimcheck/issues/3 '''
@@ -262,6 +216,54 @@ class ShapeCheckedTests(unittest.TestCase):
             attention(src, key, qry)
         with self.assertRaises(ShapeError):
             attention(src=src, key=key, qry=qry)
+
+class WildcardTests(unittest.TestCase):
+    def test_fails_backward_wildcard(self):
+        def f(t1: A['3 x+ a'], t2: A['5 y+ a']):
+            pass
+             
+        t1 = torch.randn(3, 3, 5)
+        t2 = torch.randn(5, 3, 3)
+
+        with self.assertRaises(ShapeError) as ex:
+            dimchecked(f)(t1, t2)
+
+    def test_fails_backward_just_wildcard(self):
+        def f(t1: A['x+ 2'], t2: A['y+ 2']):
+            pass
+             
+        t1 = torch.randn(3, 3, 3, 2)
+        t2 = torch.randn(3, 3, 3, 5)
+
+        with self.assertRaises(ShapeError) as ex:
+            dimchecked(f)(t1, t2)
+
+    def test_fails_two_wildcards(self):
+        with self.assertRaises(TypeError) as ex:
+            def f(t1: A['x+ y+ 2'], t2: A['x+ 2']):
+                pass
+
+    def test_succeeds_wildcard(self):
+        def f(t1: A['5 x+ a'], t2: A['a x+ 5']) -> A['a']:
+            return (t1.transpose(0, 3) * t2).sum(dim=(1, 2, 3))
+             
+
+        t1 = torch.randn(5, 1, 2, 3)
+        t2 = torch.randn(3, 1, 2, 5)
+
+        self.assertTrue((f(t1, t2) == dimchecked(f)(t1, t2)).all())
+
+    def test_wildcard_and_integer(self):
+        ''' https://github.com/jatentaki/torch-dimcheck/issues/4 '''
+        @dimchecked
+        def box_area(box: A['b+ 3 2']) -> A['b+']:
+            low, high = box.unbind(dim=-1)
+            x, y, z = (high - low).unbind(dim=-1)
+            return x * y * z
+
+        bbox = torch.tensor([[[0, 1], [0, 1], [0, 1]]])
+        box_area(bbox)
+
 
 class DataclassTests(unittest.TestCase):
     def test_dataclass_succeeds(self):
