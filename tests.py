@@ -264,6 +264,23 @@ class WildcardTests(unittest.TestCase):
         bbox = torch.tensor([[[0, 1], [0, 1], [0, 1]]])
         box_area(bbox)
 
+    def test_fails_empty_plus_wildcard(self):
+        def f(t: A['3 x+']):
+            pass
+             
+        t = torch.randn(3)
+
+        with self.assertRaises(ShapeError) as ex:
+            dimchecked(f)(t)
+
+    def test_succeeds_empty_star_wildcard(self):
+        def f(t: A['3 x*']):
+            pass
+             
+        t = torch.randn(3)
+
+        dimchecked(f)(t)
+
 
 class DataclassTests(unittest.TestCase):
     def test_dataclass_succeeds(self):
