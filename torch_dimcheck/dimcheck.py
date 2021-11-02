@@ -217,7 +217,7 @@ class CheckerState:
             raise TypeError(f'Expected {name} to be a torch.Tensor, '
                             f'found {type(value)}.')
         
-        self.parses[name] = annotation.parse_shape(value.shape)
+        self.parses[name] = annotation.parse_shape(tuple(value.shape))
         self.annotations[name] = annotation
 
     def check(self) -> Optional[ShapeError]:
