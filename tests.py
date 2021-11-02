@@ -314,6 +314,21 @@ class DataclassTests(unittest.TestCase):
                 val=torch.randn(4, 32, 10),
             )
 
+    def test_wrapped_dataclass_annotations(self):
+        '''
+        dimchecked used to fail to see that dimchecked(dataclass) is a valid
+        typelike object and reject it saying that functions cannot be type
+        annotations.
+        '''
+
+        @dimchecked
+        @dataclass
+        class Class1:
+            t: 'B'
+
+        @dimchecked
+        def f(t: 'B', c: Class1):
+            pass
 
 class OptionalTests(unittest.TestCase):
     def test_optional(self):

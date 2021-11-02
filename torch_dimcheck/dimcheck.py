@@ -1,6 +1,7 @@
 import re
 import inspect
 import torch
+import functools
 from dataclasses import dataclass, field
 from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, Any
 
@@ -193,11 +194,6 @@ def _is_optional_annotation(type_) -> bool:
         and type_.__args__[1] == type(None) \
         and isinstance(type_.__args__[0], A)
 
-def _is_typelike(obj: object) -> bool:
-    return isinstance(obj, type) or \
-           getattr(obj, '__module__', None) == 'typing' \
-           or obj is None
-
 @dataclass
 class CheckerState:
     parses: Dict[str, ParseDict] = field(default_factory=dict)
@@ -238,14 +234,25 @@ class Signature:
         ''' Convert strings to A, throw on non-types '''
 
         if isinstance(annotation, str):
-            annotation = A[annotation]
-        elif (not _is_typelike(annotation)) and not isinstance(annotation, A):
-            raise TypeError(f'Annotations used with @dimchecked can only '
-                            f'be types, strings, A, None or std::typing '
-                            f'objects, found {annotation=} '
-                            f'({type(annotation)=}).')
+            return A[annotation]
+        if isinstance(annotation, A):
+            return annotation
 
-        return annotation
+        # unwrap decorated objects. this is important for dataclasses which
+        # have themselves been wrapped in @dimchecked. Without this, they'd
+        # be treated as a function object and thus rejected
+        if hasattr(annotation, '__wrapped__'):
+            annotation = annotation.__wrapped__
+
+        if isinstance(annotation, type) or \
+            getattr(annotation, '__module__', None) == 'typing' \
+            or annotation is None:
+           return annotation
+
+        raise TypeError(f'Annotations used with @dimchecked can only '
+                        f'be types, strings, A, None or std::typing '
+                        f'objects, found {annotation=} '
+                        f'({type(annotation)=}).')
 
     @classmethod
     def from_func(cls, func):
@@ -287,6 +294,7 @@ class Signature:
 def dimchecked(func):
     signature = Signature.from_func(func)
     
+    @functools.wraps(func)
     def wrapped(*args, **kwargs):
         checker_state = CheckerState()
         
