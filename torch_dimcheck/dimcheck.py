@@ -161,9 +161,15 @@ def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
     
     return ShapeError(issues, context=[])
     
-def _zip_args_and_labels(args, signature):
+def _zip_args_and_labels(args, kwargs, signature):
     for arg, parameter in zip(args, signature.parameters.values()):
         yield parameter.name, arg, parameter.annotation
+
+    for key, value in kwargs.items():
+        if key not in signature.parameters:
+            continue
+
+        yield key, value, signature.parameters[key].annotation
 
 def _is_optional_annotation(type_) -> bool:
     return hasattr(type_, '__origin__') \
@@ -216,7 +222,8 @@ def dimchecked(func):
     def wrapped(*args, **kwargs):
         checker_state = CheckerState()
         
-        for name, value, annotation in _zip_args_and_labels(args, signature):
+        name_value_annottation = _zip_args_and_labels(args, kwargs, signature)
+        for name, value, annotation in name_value_annottation:
             checker_state.update(name, value, annotation)
         
         maybe_error = checker_state.check()
