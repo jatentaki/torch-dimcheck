@@ -170,7 +170,8 @@ def _is_optional_annotation(type_) -> bool:
 
 def _is_typelike(obj: object) -> bool:
     return isinstance(obj, type) or \
-           getattr(obj, '__module__', None) == 'typing'
+           getattr(obj, '__module__', None) == 'typing' \
+           or obj is None
 
 @dataclass
 class CheckerState:
@@ -215,8 +216,9 @@ class Signature:
             annotation = A[annotation]
         elif (not _is_typelike(annotation)) and not isinstance(annotation, A):
             raise TypeError(f'Annotations used with @dimchecked can only '
-                            f'be types, strings, A or std::typing objects, found '
-                            f'{annotation=} ({type(annotation)=}).')
+                            f'be types, strings, A, None or std::typing '
+                            f'objects, found {annotation=} '
+                            f'({type(annotation)=}).')
 
         return annotation
 

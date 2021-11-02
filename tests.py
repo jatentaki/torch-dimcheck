@@ -1,4 +1,5 @@
 import unittest, torch
+from dataclasses import dataclass
 from torch_dimcheck import dimchecked, ShapeError, A
 
 class ShapeCheckedTests(unittest.TestCase):
@@ -270,3 +271,33 @@ class ShapeCheckedTests(unittest.TestCase):
             attention(src, key, qry)
         with self.assertRaises(ShapeError):
             attention(src=src, key=key, qry=qry)
+
+class DataclassTests(unittest.TestCase):
+    def test_dataclass_succeeds(self):
+        @dimchecked
+        @dataclass
+        class ExampleClass:
+            key: 'B Q N'
+            qry: 'B Q N'
+            val: 'B V N'
+
+        ExampleClass(
+            key=torch.randn(3, 16, 10),
+            qry=torch.randn(3, 16, 10),
+            val=torch.randn(3, 32, 10),
+        )
+
+    def test_dataclass_fails(self):
+        @dimchecked
+        @dataclass
+        class ExampleClass:
+            key: 'B Q N'
+            qry: 'B Q N'
+            val: 'B V N'
+
+        with self.assertRaises(ShapeError):
+            ExampleClass(
+                key=torch.randn(3, 16, 10),
+                qry=torch.randn(3, 16, 10),
+                val=torch.randn(4, 32, 10),
+            )
