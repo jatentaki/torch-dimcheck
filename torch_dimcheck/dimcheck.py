@@ -6,7 +6,8 @@ from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, 
 
 LABEL_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*')
 FIXED_RE = re.compile('\d+')
-WCARD_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\+')
+WCARD_PLUS_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\+')
+WCARD_STAR_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\*')
 
 @dataclass(unsafe_hash=True)
 class Token:
@@ -18,14 +19,25 @@ class Token:
             return cls(int(match.group(0)))
         elif match := LABEL_RE.match(string):
             return cls(string)
-        elif match := WCARD_RE.match(string):
+        elif match := WCARD_PLUS_RE.match(string):
+            return cls(string)
+        elif match := WCARD_STAR_RE.match(string):
             return cls(string)
         else:
             raise TypeError(f'`{string}` is not a valid token')
 
+
+    @property
+    def is_star(self):
+        return isinstance(self.label, str) and '*' in self.label
+
+    @property
+    def is_plus(self):
+        return isinstance(self.label, str) and '+' in self.label
+
     @property
     def is_wildcard(self):
-        return isinstance(self.label, str) and '+' in self.label 
+        return self.is_star or self.is_plus
 
     @classmethod
     def tokenize(cls, annotation: str) -> Tuple['Token']:
@@ -71,22 +83,24 @@ class A:
             for dim, token in zip(shape, self.tokens):
                 parse_dict[token.label] = dim
         else:
-            # one wildcard present: associate tokens with dims from the front,
-            # then from the back and the remainder belongs to the wildcard
+            # one wildcard present
             s_t, s_s = 0, 0
             e_t, e_s = n_token-1, n_shape-1
 
+            # associate tokens with dims from the front
             while not self.tokens[s_t].is_wildcard:
                 parse_dict[self.tokens[s_t].label] = shape[s_s]
                 s_t += 1
                 s_s += 1
 
+            # then from the back
             while not self.tokens[e_t].is_wildcard:
                 parse_dict[self.tokens[e_t].label] = shape[e_s]
                 e_t -= 1
                 e_s -= 1
 
             assert s_t == e_t
+            # the remainder belongs to the wildcard
             parse_dict[self.tokens[s_t].label] = shape[s_s:e_s+1]
         
         return parse_dict
@@ -114,6 +128,13 @@ class Inconsistency:
     
     def __str__(self) -> str:
         return f'Inconsistency: {self.label} = {list(self.values)}'
+
+@dataclass
+class EmptyPlusWildcard:
+    label: str
+
+    def __str__(self) -> str:
+        return f'Label {self.label} requires at least 1 dimension, got 0'
 
 class ShapeError(TypeError):
     def __init__(
@@ -145,12 +166,16 @@ def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
                     ))
             elif isinstance(label, str):
                 bindings.setdefault(label, set()).add(value)
+
+                if '+' in label and len(value) == 0:
+                    issues.append(EmptyPlusWildcard(label))
+
             else:
                 raise AssertionError('Unreachable')
     
     for label, values in bindings.items():
         if label == '...':
-            continue # t
+            continue
         if len(values) > 1:
             issues.append(Inconsistency(label=label, values=values))
         else:
