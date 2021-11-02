@@ -174,3 +174,69 @@ class ShapeCheckedTests(unittest.TestCase):
         t2 = torch.randn(3, 1, 2, 5)
 
         self.assertTrue((f(t1, t2) == dimchecked(f)(t1, t2)).all())
+
+    def test_no_batch(self):
+        ''' https://github.com/jatentaki/torch-dimcheck/issues/5 '''
+        def f(t: A['B N 3']) -> A['B N 3']:
+            return t
+
+        t = torch.randn(2, 3)
+        with self.assertRaises(TypeError):
+            dimchecked(f)(t)
+
+    def test_wildcard_and_integer(self):
+        ''' https://github.com/jatentaki/torch-dimcheck/issues/4 '''
+        @dimchecked
+        def box_area(box: A['... 3 2']) -> A['...']:
+            low, high = box.chunk(2, dim=-1)
+            x, y, z = (high - low).chunk(3, dim=-2)
+            return x * y * z
+
+        bbox = torch.tensor([[0, 1], [0, 1], [0, 1]])
+        box_area(bbox)
+
+    def test_fewer_returns_than_declared(self):
+        ''' https://github.com/jatentaki/torch-dimcheck/issues/3 '''
+        @dimchecked
+        def f() -> (['a'], ['b']):
+            return (torch.zeros(3), )
+
+        with self.assertRaises(TypeError):
+            f()
+
+    def test_declare_tuple_return_none(self):
+        ''' https://github.com/jatentaki/torch-dimcheck/issues/2 '''
+        @dimchecked
+        def f() -> ([3], [4]):
+            return None
+
+        with self.assertRaises(TypeError):
+            f()
+
+    def test_declare_tuple_return_any(self):
+        @dimchecked
+        def f() -> ([3], [4]):
+            return object()
+
+        with self.assertRaises(TypeError):
+            f()
+
+    def test_keyword_arguments(self):
+        ''' https://github.com/jatentaki/torch-dimcheck/issues/1 '''
+        @dimchecked
+        def attention(
+            src: A['B S H W'],
+            key: A['B C H W'],
+            qry: A['B C H W'],
+        ):
+            pass
+
+
+        src = torch.randn(2, 3, 3, 3)
+        key = torch.randn(2, 3, 5, 5)
+        qry = torch.randn(2, 3, 5, 5)
+
+        with self.assertRaises(ShapeError):
+            attention(src, key, qry)
+        with self.assertRaises(ShapeError):
+            attention(src=src, key=key, qry=qry)

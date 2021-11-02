@@ -228,6 +228,10 @@ def dimchecked(func):
         if not isinstance(signature.return_annotation, tuple):
             checker_state.update('<return>', result, signature.return_annotation)
         else:
+            if not (hasattr(result, '__len__') and hasattr(result, '__getitem__')):
+                raise TypeError(f'Return value should be a sequence'
+                                f', got {type(result)}.')
+
             if len(signature.return_annotation) != len(result):
                 raise TypeError(f'Return should have '
                                 f'{len(signature.return_annotation)} '
