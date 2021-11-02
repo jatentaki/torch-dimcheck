@@ -1,4 +1,5 @@
 import unittest, torch
+from typing import Optional
 from dataclasses import dataclass
 from torch_dimcheck import dimchecked, ShapeError, A
 
@@ -217,6 +218,7 @@ class ShapeCheckedTests(unittest.TestCase):
         with self.assertRaises(ShapeError):
             attention(src=src, key=key, qry=qry)
 
+
 class WildcardTests(unittest.TestCase):
     def test_fails_backward_wildcard(self):
         def f(t1: A['3 x+ a'], t2: A['5 y+ a']):
@@ -311,3 +313,22 @@ class DataclassTests(unittest.TestCase):
                 qry=torch.randn(3, 16, 10),
                 val=torch.randn(4, 32, 10),
             )
+
+
+class OptionalTests(unittest.TestCase):
+    def test_optional(self):
+        @dimchecked
+        def f(a: '3 b', b: Optional[A['b']]) -> 'b':
+            summed = a.sum(dim=0)
+            if b is not None:
+                summed = summed + b
+            return summed
+
+        a = torch.randn(3, 5)
+        b = torch.randn(5)
+        b_fail = torch.randn(7)
+
+        f(a, b)
+        f(a, None)
+        with self.assertRaises(ShapeError):
+            f(a, b_fail)
