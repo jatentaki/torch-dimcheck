@@ -30,6 +30,35 @@ class ShapeCheckedTests(unittest.TestCase):
         with self.assertRaises(ShapeError) as ex:
             dimchecked(f)(t1, t2)
 
+    def test_wrap_correct_no_A(self):
+        def f(t1: '3 5', t2: '5 3') -> '3':
+            return (t1.transpose(0, 1) * t2).sum(dim=0)
+             
+        t1 = torch.randn(3, 5)
+        t2 = torch.randn(5, 3)
+
+        self.assertTrue((f(t1, t2) == dimchecked(f)(t1, t2)).all())
+
+    def test_fails_wrong_parameter_no_A(self):
+        def f(t1: '3 3', t2: '5, 3') -> '3':
+            return (t1.transpose(0, 1) * t2).sum(dim=0)
+             
+        t1 = torch.randn(3, 5)
+        t2 = torch.randn(5, 3)
+
+        with self.assertRaises(ShapeError) as ex:
+            dimchecked(f)(t1, t2)
+
+    def test_fails_wrong_return_no_A(self):
+        def f(t1: '3 5', t2: '5, 3') -> '4':
+            return (t1.transpose(0, 1) * t2).sum(dim=0)
+             
+        t1 = torch.randn(3, 5)
+        t2 = torch.randn(5, 3)
+
+        with self.assertRaises(ShapeError) as ex:
+            dimchecked(f)(t1, t2)
+
     def test_fails_parameter_label_mismatch(self):
         def f(t1: A['3 a'], t2: A['a 3']) -> A['3']:
             return (t1.transpose(0, 1) * t2).sum(dim=0)
@@ -170,6 +199,7 @@ class ShapeCheckedTests(unittest.TestCase):
         def f(t1: A['5 ... a'], t2: A['a ... 5']) -> A['a']:
             return (t1.transpose(0, 3) * t2).sum(dim=(1, 2, 3))
              
+
         t1 = torch.randn(5, 1, 2, 3)
         t2 = torch.randn(3, 1, 2, 5)
 
@@ -198,7 +228,7 @@ class ShapeCheckedTests(unittest.TestCase):
     def test_fewer_returns_than_declared(self):
         ''' https://github.com/jatentaki/torch-dimcheck/issues/3 '''
         @dimchecked
-        def f() -> (['a'], ['b']):
+        def f() -> (A['a'], A['b']):
             return (torch.zeros(3), )
 
         with self.assertRaises(TypeError):
@@ -207,7 +237,7 @@ class ShapeCheckedTests(unittest.TestCase):
     def test_declare_tuple_return_none(self):
         ''' https://github.com/jatentaki/torch-dimcheck/issues/2 '''
         @dimchecked
-        def f() -> ([3], [4]):
+        def f() -> (A['3'], A['4']):
             return None
 
         with self.assertRaises(TypeError):
@@ -215,7 +245,7 @@ class ShapeCheckedTests(unittest.TestCase):
 
     def test_declare_tuple_return_any(self):
         @dimchecked
-        def f() -> ([3], [4]):
+        def f() -> (A['3'], A['4']):
             return object()
 
         with self.assertRaises(TypeError):

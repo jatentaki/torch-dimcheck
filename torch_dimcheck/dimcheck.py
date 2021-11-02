@@ -2,7 +2,7 @@ import re
 import inspect
 import torch
 from dataclasses import dataclass, field
-from typing import Union, Optional, Tuple, Tuple, Dict, Set, List
+from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, Any
 
 LABEL_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*')
 FIXED_RE = re.compile('\d+')
@@ -161,16 +161,6 @@ def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
     
     return ShapeError(issues, context=[])
     
-def _zip_args_and_labels(args, kwargs, signature):
-    for arg, parameter in zip(args, signature.parameters.values()):
-        yield parameter.name, arg, parameter.annotation
-
-    for key, value in kwargs.items():
-        if key not in signature.parameters:
-            continue
-
-        yield key, value, signature.parameters[key].annotation
-
 def _is_optional_annotation(type_) -> bool:
     return hasattr(type_, '__origin__') \
         and type_.__origin__ == Union \
@@ -195,10 +185,6 @@ class CheckerState:
                 annotation = annotation.__args__[0]
 
         if not isinstance(annotation, A):
-            if not _is_typelike(annotation):
-                raise TypeError(f'Annotations used with @dimchecked can only '
-                                f'be types or std::typing objects, found '
-                                f'{annotation=} ({type(annotation)=}).')
             return
         
         if not isinstance(value, torch.Tensor):
@@ -215,15 +201,69 @@ class CheckerState:
                 rendered = annotation.render(self.parses[name])
                 maybe_error.context.append(f'{name}: {rendered}')
         return maybe_error
-         
+ 
+@dataclass
+class Signature:
+    args: OrderedDict[str, A]
+    returns: List[Optional[A]]
+
+    @staticmethod
+    def _to_A(annotation):
+        ''' Convert strings to A, throw on non-types '''
+
+        if isinstance(annotation, str):
+            annotation = A[annotation]
+        elif (not _is_typelike(annotation)) and not isinstance(annotation, A):
+            raise TypeError(f'Annotations used with @dimchecked can only '
+                            f'be types, strings, A or std::typing objects, found '
+                            f'{annotation=} ({type(annotation)=}).')
+
+        return annotation
+
+    @classmethod
+    def from_func(cls, func):
+        sig = inspect.signature(func)
+
+        args = OrderedDict()
+        for parameter in sig.parameters.values():
+            args[parameter.name] = cls._to_A(parameter.annotation)
+
+        if not isinstance(sig.return_annotation, tuple):
+            return_annotation = (sig.return_annotation, )
+        else:
+            return_annotation = sig.return_annotation
+
+        returns = []
+        for subannotation in return_annotation:
+            returns.append(cls._to_A(subannotation))
+
+        return cls(args, returns)
+
+    def zip_args(self, args: List[Any], kwargs: Dict[str, Any]):
+        for value, (name, annotation) in zip(args, self.args.items()):
+            yield name, value, annotation
+
+        for key, value in kwargs.items():
+            if key not in self.args:
+                continue
+
+            yield key, value, self.args[key]
+
+    def zip_returns(self, returns: List[Any]):
+        if len(self.returns) != len(returns):
+            raise TypeError(f'Return should have {len(self.returns)} '
+                            f'elements, found {len(returns)}.')
+
+        for i, (value, annotation) in enumerate(zip(returns, self.returns)):
+            yield f'<return {i}>', value, annotation
+
 def dimchecked(func):
-    signature = inspect.signature(func)
+    signature = Signature.from_func(func)
     
     def wrapped(*args, **kwargs):
         checker_state = CheckerState()
         
-        name_value_annottation = _zip_args_and_labels(args, kwargs, signature)
-        for name, value, annotation in name_value_annottation:
+        for name, value, annotation in signature.zip_args(args, kwargs):
             checker_state.update(name, value, annotation)
         
         maybe_error = checker_state.check()
@@ -232,23 +272,13 @@ def dimchecked(func):
 
         result = func(*args, **kwargs)
 
-        if not isinstance(signature.return_annotation, tuple):
-            checker_state.update('<return>', result, signature.return_annotation)
+        if not isinstance(result, tuple):
+            tupled_result = (result, )
         else:
-            if not (hasattr(result, '__len__') and hasattr(result, '__getitem__')):
-                raise TypeError(f'Return value should be a sequence'
-                                f', got {type(result)}.')
+            tupled_result = result
 
-            if len(signature.return_annotation) != len(result):
-                raise TypeError(f'Return should have '
-                                f'{len(signature.return_annotation)} '
-                                f'elements, found {len(result)}.')
-
-            for i, (value, annotation) in enumerate(zip(
-                                            result,
-                                            signature.return_annotation,
-                                          )):
-                checker_state.update(f'<return {i}>', value, annotation)
+        for name, value, annotation in signature.zip_returns(tupled_result):
+            checker_state.update(name, value, annotation)
 
         maybe_error = checker_state.check()
         if maybe_error is not None:
