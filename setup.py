@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='torch-dimcheck',
-    version='0.0.1',
+    version='0.2.0',
     description='Dimensionality annotations for tensor parameters and return values',
     packages=['torch_dimcheck'],
     author='Michał Tyszkiewicz',
