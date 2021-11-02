@@ -6,7 +6,7 @@ from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, 
 
 LABEL_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*')
 FIXED_RE = re.compile('\d+')
-WCARD_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\.\.\.')
+WCARD_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\+')
 
 @dataclass(unsafe_hash=True)
 class Token:
@@ -25,7 +25,7 @@ class Token:
 
     @property
     def is_wildcard(self):
-        return isinstance(self.label, str) and '...' in self.label 
+        return isinstance(self.label, str) and '+' in self.label 
 
     @classmethod
     def tokenize(cls, annotation: str) -> Tuple['Token']:

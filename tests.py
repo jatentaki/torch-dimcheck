@@ -124,11 +124,11 @@ class ShapeCheckedTests(unittest.TestCase):
 
     def test_fails_two_wildcards(self):
         with self.assertRaises(TypeError) as ex:
-            def f(t1: A['3 ...a ...b 2'], t2: A['5 3']):
+            def f(t1: A['3 a+ b+ 2'], t2: A['5 3']):
                 pass
 
     def test_succeeds_consistent_wildcards(self):
-        def f(t1: A['b... 3'], t2: A['b... 3']):
+        def f(t1: A['b+ 3'], t2: A['b+ 3']):
             pass
              
         t1 = torch.randn(3, 2, 3)
@@ -136,22 +136,13 @@ class ShapeCheckedTests(unittest.TestCase):
 
         dimchecked(f)(t1, t2)
 
-        def g(t1: A['b... a 3'], t2: A['b... a 3']):
+        def g(t1: A['b+ a 3'], t2: A['b+ a 3']):
             pass
 
         dimchecked(g)(t1, t2)
 
-    def test_succeeds_anonymous_wildcards(self):
-        def f(t1: A['... 3'], t2: A['... 3']):
-            pass
-             
-        t1 = torch.randn(3, 2, 3)
-        t2 = torch.randn(3, 4, 3)
-
-        dimchecked(f)(t1, t2)
-
     def test_fails_inconsistent_wildcards(self):
-        def f(t1: A['b... 3'], t2: A['b... 3']):
+        def f(t1: A['b+ 3'], t2: A['b+ 3']):
             pass
              
         t1 = torch.randn(3, 3, 3)
@@ -161,7 +152,7 @@ class ShapeCheckedTests(unittest.TestCase):
             dimchecked(f)(t1, t2)
 
     def test_fails_non_type_annotation(self):
-        def f(t1: A['b... 3'], t2: ['b... 3']):
+        def f(t1: A['b+ 3'], t2: ['b+ 3']):
             pass
              
         t1 = torch.randn(3, 3, 3)
@@ -172,7 +163,7 @@ class ShapeCheckedTests(unittest.TestCase):
         self.assertTrue('std::typing' in str(ex.exception))
 
     def test_fails_backward_ellipsis_wildcard(self):
-        def f(t1: A['3 ... a'], t2: A['5 ... a']):
+        def f(t1: A['3 x+ a'], t2: A['5 y+ a']):
             pass
              
         t1 = torch.randn(3, 3, 5)
@@ -182,22 +173,22 @@ class ShapeCheckedTests(unittest.TestCase):
             dimchecked(f)(t1, t2)
 
     def test_fails_backward_just_ellipsis(self):
-        def f(t1: A['... 2'], t2: A['... 2']):
+        def f(t1: A['x+ 2'], t2: A['y+ 2']):
             pass
              
         t1 = torch.randn(3, 3, 3, 2)
-        t2 = torch.randn(5, 3, 1, 5)
+        t2 = torch.randn(3, 3, 3, 5)
 
         with self.assertRaises(ShapeError) as ex:
             dimchecked(f)(t1, t2)
 
     def test_fails_two_ellipsis(self):
         with self.assertRaises(TypeError) as ex:
-            def f(t1: A['... ... 2'], t2: A['... 2']):
+            def f(t1: A['x+ y+ 2'], t2: A['x+ 2']):
                 pass
 
     def test_succeeds_ellipsis(self):
-        def f(t1: A['5 ... a'], t2: A['a ... 5']) -> A['a']:
+        def f(t1: A['5 x+ a'], t2: A['a x+ 5']) -> A['a']:
             return (t1.transpose(0, 3) * t2).sum(dim=(1, 2, 3))
              
 
@@ -218,12 +209,12 @@ class ShapeCheckedTests(unittest.TestCase):
     def test_wildcard_and_integer(self):
         ''' https://github.com/jatentaki/torch-dimcheck/issues/4 '''
         @dimchecked
-        def box_area(box: A['... 3 2']) -> A['...']:
-            low, high = box.chunk(2, dim=-1)
-            x, y, z = (high - low).chunk(3, dim=-2)
+        def box_area(box: A['b+ 3 2']) -> A['b+']:
+            low, high = box.unbind(dim=-1)
+            x, y, z = (high - low).unbind(dim=-1)
             return x * y * z
 
-        bbox = torch.tensor([[0, 1], [0, 1], [0, 1]])
+        bbox = torch.tensor([[[0, 1], [0, 1], [0, 1]]])
         box_area(bbox)
 
     def test_fewer_returns_than_declared(self):
