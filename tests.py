@@ -330,6 +330,24 @@ class DataclassTests(unittest.TestCase):
         def f(t: 'B', c: Class1):
             pass
 
+    def test_with_classmethod(self):
+        '''
+        dimchecked used to cause @classmethod to fail with wrapped classes
+        '''
+
+        @dimchecked
+        @dataclass
+        class Class:
+            t: 'B'
+
+            @classmethod
+            @dimchecked
+            def from_t(cls, t: 'B'):
+                return Class(t)
+
+        Class(torch.randn(3))
+        Class.from_t(torch.randn(3))
+
 class OptionalTests(unittest.TestCase):
     def test_optional(self):
         @dimchecked
