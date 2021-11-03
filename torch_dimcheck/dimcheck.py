@@ -291,11 +291,15 @@ class Signature:
         for i, (value, annotation) in enumerate(zip(returns, self.returns)):
             yield f'<return {i}>', value, annotation
 
-def dimchecked(func):
-    signature = Signature.from_func(func)
+def dimchecked(wrapped):
+    if isinstance(wrapped, type):
+        wrapped.__init__ = dimchecked(wrapped.__init__)
+        return wrapped
+
+    signature = Signature.from_func(wrapped)
     
-    @functools.wraps(func)
-    def wrapped(*args, **kwargs):
+    @functools.wraps(wrapped)
+    def wrapper(*args, **kwargs):
         checker_state = CheckerState()
         
         for name, value, annotation in signature.zip_args(args, kwargs):
@@ -305,7 +309,7 @@ def dimchecked(func):
         if maybe_error is not None:
             raise maybe_error
 
-        result = func(*args, **kwargs)
+        result = wrapped(*args, **kwargs)
 
         if not isinstance(result, tuple):
             tupled_result = (result, )
@@ -320,4 +324,4 @@ def dimchecked(func):
             raise maybe_error
 
         return result
-    return wrapped
+    return wrapper
