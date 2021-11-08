@@ -297,7 +297,7 @@ class CheckerState:
 @dataclass
 class Signature:
     args: OrderedDict[str, A]
-    returns: List[Optional[A]]
+    returns: Optional[List[Optional[A]]]
 
     @staticmethod
     def _to_A(annotation):
@@ -332,12 +332,15 @@ class Signature:
         for parameter in sig.parameters.values():
             args[parameter.name] = cls._to_A(parameter.annotation)
 
+        if sig.return_annotation in (inspect.Signature.empty, Any):
+            return cls(args, None)
+
+        returns = []
         if not isinstance(sig.return_annotation, tuple):
             return_annotation = (sig.return_annotation, )
         else:
             return_annotation = sig.return_annotation
 
-        returns = []
         for subannotation in return_annotation:
             returns.append(cls._to_A(subannotation))
 
@@ -354,6 +357,9 @@ class Signature:
             yield key, value, self.args[key]
 
     def zip_returns(self, returns: List[Any]):
+        if self.returns is None:
+            return
+
         if len(self.returns) != len(returns):
             raise DimcheckError(f'Return should have {len(self.returns)} '
                             f'elements, found {len(returns)}.')

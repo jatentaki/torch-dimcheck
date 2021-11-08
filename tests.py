@@ -1,5 +1,5 @@
 import unittest, torch
-from typing import Optional
+from typing import Optional, Any
 from dataclasses import dataclass
 from torch_dimcheck import dimchecked, ShapeError, A
 
@@ -217,7 +217,13 @@ class ShapeCheckedTests(unittest.TestCase):
             attention(src, key, qry)
         with self.assertRaises(ShapeError):
             attention(src=src, key=key, qry=qry)
+    
+    def test_multiple_unchecked_returns(self):
+        @dimchecked
+        def f(a: 'A B'):# -> Any:
+            return [], {}
 
+        f(torch.randn(3, 5))
 
 class WildcardTests(unittest.TestCase):
     def test_fails_backward_wildcard(self):
