@@ -5,6 +5,83 @@ import functools
 from dataclasses import dataclass, field
 from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, Any
 
+@dataclass
+class ConstError:
+    tensor_name: str
+    expected: int
+    found: int
+    
+    def __str__(self) -> str:
+        return f'{self.tensor_name}: {self.expected} != {self.found}'
+
+@dataclass
+class Inconsistency:
+    label: str
+    values: Set[int]
+    
+    def __str__(self) -> str:
+        return f'Inconsistency: {self.label} = {list(self.values)}'
+
+@dataclass
+class EmptyPlusWildcard:
+    label: str
+
+    def __str__(self) -> str:
+        return f'Label {self.label} requires at least 1 dimension, got 0'
+
+class DimcheckError(TypeError):
+    def __init__(self, text: str):
+        self.text = text
+
+    def set_func_data(self, func):
+        self.function_name = get_function_name(func)
+        cls = get_defining_class(func)
+        if cls is not None:
+            self.class_name = cls.__name__
+        else:
+            self.class_name = None
+
+    def render_context(self) -> str:
+        if self.class_name is None:
+            return f'Error in function `{self.function_name}`'
+        else:
+            return (f'Error in method `{self.class_name}.{self.function_name}`')
+
+    def __str__(self):
+        context = self.render_context()
+        return f'{context}: {self.text}'
+
+class ParseError(DimcheckError):
+    def __init__(self, text: str):
+        super(ParseError, self).__init__(text)
+        self.tensor_name = None
+
+    def render_context(self) -> str:
+        if self.class_name is None:
+            offender = f'function `{self.function_name}`'
+        else:
+            offender = f'method `{self.class_name}.{self.function_name}`'
+
+        return (f'Error parsing argument `{self.tensor_name}` of {offender}: '
+                f'{self.text}.')
+
+    __str__ = render_context
+        
+class ShapeError(DimcheckError):
+    def __init__(
+        self,
+        issues: List[Union[ConstError, Inconsistency]],
+        context: List[str],
+    ):
+        self.issues = issues
+        self.context = context
+    
+    def __str__(self) -> str:
+        func_data = self.render_context()
+        issues = '\n\t'.join(str(i) for i in self.issues)
+        context = '\n\t'.join(self.context)
+        return f'{func_data}\nIssues:\n\t{issues}\nContext:\n\t{context}'
+
 LABEL_RE = re.compile('[a-zA-Z]([a-zA-Z]|\d)*')
 FIXED_RE = re.compile('\d+')
 WCARD_PLUS_RE = re.compile('([a-zA-Z]([a-zA-Z]|\d)*)?\+')
@@ -25,7 +102,7 @@ class Token:
         elif match := WCARD_STAR_RE.match(string):
             return cls(string)
         else:
-            raise TypeError(f'`{string}` is not a valid token')
+            raise DimcheckError(f'`{string}` is not a valid token')
 
 
     @property
@@ -45,7 +122,7 @@ class Token:
         tokens = tuple(cls.from_str(s) for s in annotation.split())
         # there can be at most one wildcard
         if sum((1 if t.is_wildcard else 0) for t in tokens) > 1:
-            raise TypeError(f'Annotation `{annotation}` cannot '
+            raise DimcheckError(f'Annotation `{annotation}` cannot '
                              'contain more than 1 wildcard.')
         return tokens
 
@@ -72,10 +149,10 @@ class A:
         has_wild = any(t.is_wildcard for t in self.tokens)
 
         if has_wild and (n_shape < n_token - 1):
-            raise TypeError(f'Got shape {shape} with an annotation {self.raw}')
+            raise ParseError(f'Got shape {shape} with an annotation {self.raw}')
 
         if not has_wild and n_shape != n_token:
-            raise TypeError(f'Got shape of length {len(shape)} with an '
+            raise ParseError(f'Got shape of length {len(shape)} with an '
                             f'annotation of length {(len(self.tokens))} '
                             f'({self.raw}) vs ({shape}).')
         
@@ -113,43 +190,31 @@ class A:
             binds.append(f'{token.label}={value}')
         return ' '.join(binds)
 
-@dataclass
-class ConstError:
-    tensor_name: str
-    expected: int
-    found: int
-    
-    def __str__(self) -> str:
-        return f'{self.tensor_name}: {self.expected} != {self.found}'
+def get_function_name(func):
+    if isinstance(func, functools.partial):
+        return get_function_name(func.func)
+    return func.__name__
 
-@dataclass
-class Inconsistency:
-    label: str
-    values: Set[int]
-    
-    def __str__(self) -> str:
-        return f'Inconsistency: {self.label} = {list(self.values)}'
-
-@dataclass
-class EmptyPlusWildcard:
-    label: str
-
-    def __str__(self) -> str:
-        return f'Label {self.label} requires at least 1 dimension, got 0'
-
-class ShapeError(TypeError):
-    def __init__(
-        self,
-        issues: List[Union[ConstError, Inconsistency]],
-        context: List[str],
-    ):
-        self.issues = issues
-        self.context = context
-    
-    def __str__(self) -> str:
-        issues = '\n\t'.join(str(i) for i in self.issues)
-        context = '\n\t'.join(self.context)
-        return f'Issues:\n\t{issues}\nContext:\n\t{context}'
+def get_defining_class(meth):
+    '''taken from https://stackoverflow.com/questions/3589311 '''
+    if isinstance(meth, functools.partial):
+        return get_defining_class(meth.func)
+    if inspect.ismethod(meth) \
+        or (inspect.isbuiltin(meth) \
+            and getattr(meth, '__self__', None) is not None \
+            and getattr(meth.__self__, '__class__', None
+           )):
+        for cls in inspect.getmro(meth.__self__.__class__):
+            if meth.__name__ in cls.__dict__:
+                return cls
+        meth = getattr(meth, '__func__', meth)  # fallback to __qualname__ parsing
+    if inspect.isfunction(meth):
+        cls = getattr(inspect.getmodule(meth),
+                      meth.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0],
+                      None)
+        if isinstance(cls, type):
+            return cls
+    return getattr(meth, '__objclass__', None)  # handle special descriptor objects
 
 def check_consistency(parses: Dict[str, ParseDict]) -> Optional[ShapeError]:
     issues = []
@@ -210,10 +275,15 @@ class CheckerState:
             return
         
         if not isinstance(value, torch.Tensor):
-            raise TypeError(f'Expected {name} to be a torch.Tensor, '
+            raise DimcheckError(f'Expected {name} to be a torch.Tensor, '
                             f'found {type(value)}.')
         
-        self.parses[name] = annotation.parse_shape(tuple(value.shape))
+        try:
+            self.parses[name] = annotation.parse_shape(tuple(value.shape))
+        except ParseError as e:
+            e.tensor_name = name
+            raise e
+
         self.annotations[name] = annotation
 
     def check(self) -> Optional[ShapeError]:
@@ -285,7 +355,7 @@ class Signature:
 
     def zip_returns(self, returns: List[Any]):
         if len(self.returns) != len(returns):
-            raise TypeError(f'Return should have {len(self.returns)} '
+            raise DimcheckError(f'Return should have {len(self.returns)} '
                             f'elements, found {len(returns)}.')
 
         for i, (value, annotation) in enumerate(zip(returns, self.returns)):
@@ -293,6 +363,7 @@ class Signature:
 
 def dimchecked(wrapped):
     if isinstance(wrapped, type):
+        # this is the case for dataclasses
         wrapped.__init__ = dimchecked(wrapped.__init__)
         return wrapped
 
@@ -300,28 +371,33 @@ def dimchecked(wrapped):
     
     @functools.wraps(wrapped)
     def wrapper(*args, **kwargs):
-        checker_state = CheckerState()
-        
-        for name, value, annotation in signature.zip_args(args, kwargs):
-            checker_state.update(name, value, annotation)
-        
-        maybe_error = checker_state.check()
-        if maybe_error is not None:
-            raise maybe_error
+        try:
+            checker_state = CheckerState()
+            
+            for name, value, annotation in signature.zip_args(args, kwargs):
+                checker_state.update(name, value, annotation)
+            
+            maybe_error = checker_state.check()
+            if maybe_error is not None:
+                raise maybe_error
 
-        result = wrapped(*args, **kwargs)
+            result = wrapped(*args, **kwargs)
 
-        if not isinstance(result, tuple):
-            tupled_result = (result, )
-        else:
-            tupled_result = result
+            if not isinstance(result, tuple):
+                tupled_result = (result, )
+            else:
+                tupled_result = result
 
-        for name, value, annotation in signature.zip_returns(tupled_result):
-            checker_state.update(name, value, annotation)
+            for name, value, annotation in signature.zip_returns(tupled_result):
+                checker_state.update(name, value, annotation)
 
-        maybe_error = checker_state.check()
-        if maybe_error is not None:
-            raise maybe_error
+            maybe_error = checker_state.check()
+            if maybe_error is not None:
+                raise maybe_error
 
-        return result
+            return result
+        except DimcheckError as e:
+            e.set_func_data(wrapped)
+            raise e
+
     return wrapper
