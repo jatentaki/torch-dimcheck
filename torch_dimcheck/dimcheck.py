@@ -1,6 +1,5 @@
 import re
 import inspect
-import torch
 import functools
 from dataclasses import dataclass, field
 from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, Any
@@ -259,6 +258,26 @@ def _is_optional_annotation(type_) -> bool:
         and type_.__args__[1] == type(None) \
         and isinstance(type_.__args__[0], A)
 
+def get_shape(tensorlike, name):
+    if not hasattr(tensorlike, 'shape'):
+        raise DimcheckError(f'Expected {name} to have a an attribute `shape` '
+                            f'(type({name})={type(tensorlike).__name__}.')
+
+    try:
+        shape = tuple(tensorlike.shape)
+    except TypeError:
+        raise DimcheckError(f'Expected {name}.shape to return a tuple of int '
+                            f'but {name}.shape is not iterable '
+                            f'(type({name})={type(tensorlike).__name__}.')
+    
+    if not all(isinstance(dim, int) for dim in shape):
+        types = ', '.join(type(e).__name__ for e in shape)
+        raise DimcheckError(f'Expected {name}.shape to return a tuple of int '
+                            f'but the result is a tuple of {types} '
+                            f'(type({name})={type(tensorlike).__name__}.')
+
+    return shape
+
 @dataclass
 class CheckerState:
     parses: Dict[str, ParseDict] = field(default_factory=dict)
@@ -274,12 +293,9 @@ class CheckerState:
         if not isinstance(annotation, A):
             return
         
-        if not isinstance(value, torch.Tensor):
-            raise DimcheckError(f'Expected {name} to be a torch.Tensor, '
-                            f'found {type(value)}.')
-        
+        shape = get_shape(value, name) 
         try:
-            self.parses[name] = annotation.parse_shape(tuple(value.shape))
+            self.parses[name] = annotation.parse_shape(shape)
         except ParseError as e:
             e.tensor_name = name
             raise e
