@@ -2,7 +2,8 @@ import re
 import inspect
 import functools
 from dataclasses import dataclass, field
-from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, OrderedDict, Any
+from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, \
+                   OrderedDict, Any, NamedTuple
 
 @dataclass
 class ConstError:
@@ -385,6 +386,11 @@ class Signature:
 
 def dimchecked(wrapped):
     if isinstance(wrapped, type):
+        if issubclass(wrapped, tuple) and hasattr(wrapped, '_asdict'):
+            # looks like a NamedTuple, which doesn't use __init__
+            wrapped.__new__ = dimchecked(wrapped.__new__)
+            return wrapped
+
         # this is the case for dataclasses
         wrapped.__init__ = dimchecked(wrapped.__init__)
         return wrapped
