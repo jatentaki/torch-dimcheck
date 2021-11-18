@@ -262,14 +262,14 @@ def _is_optional_annotation(type_) -> bool:
 def get_shape(tensorlike, name):
     if not hasattr(tensorlike, 'shape'):
         raise DimcheckError(f'Expected {name} to have a an attribute `shape` '
-                            f'(type({name})={type(tensorlike).__name__}.')
+                            f'(type({name})={type(tensorlike).__name__}).')
 
     try:
         shape = tuple(tensorlike.shape)
     except TypeError:
         raise DimcheckError(f'Expected {name}.shape to return a tuple of int '
                             f'but {name}.shape is not iterable '
-                            f'(type({name})={type(tensorlike).__name__}.')
+                            f'(type({name})={type(tensorlike).__name__}).')
     
     if not all(isinstance(dim, int) for dim in shape):
         types = ', '.join(type(e).__name__ for e in shape)
