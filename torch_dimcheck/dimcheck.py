@@ -377,6 +377,13 @@ class Signature:
         if self.returns is None:
             return
 
+        if isinstance(self.returns, type):
+            if isinstance(returns, self.returns):
+                return
+            else:
+                raise DimcheckError(f'Expected type={self.returns}, found '
+                                    f'{type(returns)}.')
+
         if len(self.returns) != len(returns):
             raise DimcheckError(f'Return should have {len(self.returns)} '
                             f'elements, found {len(returns)}.')
