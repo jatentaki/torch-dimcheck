@@ -377,13 +377,6 @@ class Signature:
         if self.returns is None:
             return
 
-        if isinstance(self.returns, type):
-            if isinstance(returns, self.returns):
-                return
-            else:
-                raise DimcheckError(f'Expected type={self.returns}, found '
-                                    f'{type(returns)}.')
-
         if len(self.returns) != len(returns):
             raise DimcheckError(f'Return should have {len(self.returns)} '
                             f'elements, found {len(returns)}.')
@@ -418,10 +411,11 @@ def dimchecked(wrapped):
 
             result = wrapped(*args, **kwargs)
 
-            if not isinstance(result, tuple):
-                tupled_result = (result, )
-            else:
+            if isinstance(result, (list, tuple)) and \
+               not hasattr(result, '_asdict'): # don't unpack NamedTuple
                 tupled_result = result
+            else:
+                tupled_result = (result, )
 
             for name, value, annotation in signature.zip_returns(tupled_result):
                 checker_state.update(name, value, annotation)
