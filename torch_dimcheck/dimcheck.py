@@ -42,7 +42,9 @@ class DimcheckError(TypeError):
             self.class_name = None
 
     def render_context(self) -> str:
-        if self.class_name is None:
+        if not hasattr(self, 'class_name'):
+            offender = '<unknown>'
+        elif self.class_name is None:
             return f'Error in function `{self.function_name}`'
         else:
             return (f'Error in method `{self.class_name}.{self.function_name}`')
@@ -57,7 +59,9 @@ class ParseError(DimcheckError):
         self.tensor_name = None
 
     def render_context(self) -> str:
-        if self.class_name is None:
+        if not hasattr(self, 'class_name'):
+            offender = '<unknown>'
+        elif self.class_name is None:
             offender = f'function `{self.function_name}`'
         else:
             offender = f'method `{self.class_name}.{self.function_name}`'
