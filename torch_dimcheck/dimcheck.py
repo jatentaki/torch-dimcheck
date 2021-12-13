@@ -97,17 +97,23 @@ class Token:
     
     @classmethod
     def from_str(cls, string: str) -> 'Token':
-        if match := FIXED_RE.match(string):
+        match = FIXED_RE.match(string)
+        if match:
             return cls(int(match.group(0)))
-        elif match := LABEL_RE.match(string):
-            return cls(string)
-        elif match := WCARD_PLUS_RE.match(string):
-            return cls(string)
-        elif match := WCARD_STAR_RE.match(string):
-            return cls(string)
-        else:
-            raise DimcheckError(f'`{string}` is not a valid token')
 
+        match = LABEL_RE.match(string)
+        if match:
+            return cls(string)
+
+        match = WCARD_PLUS_RE.match(string)
+        if match:
+            return cls(string)
+
+        match = WCARD_STAR_RE.match(string)
+        if match:
+            return cls(string)
+
+        raise DimcheckError(f'`{string}` is not a valid token')
 
     @property
     def is_star(self):
