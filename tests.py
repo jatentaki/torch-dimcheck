@@ -1,5 +1,5 @@
 import unittest, torch
-from typing import Optional, Any
+from typing import Optional, Any, NamedTuple
 from dataclasses import dataclass
 from torch_dimcheck import dimchecked, ShapeError, A
 
@@ -371,3 +371,32 @@ class OptionalTests(unittest.TestCase):
         f(a, None)
         with self.assertRaises(ShapeError):
             f(a, b_fail)
+
+class NamedTupleTests(unittest.TestCase):
+    def test_return(self):
+        class NT(NamedTuple):
+            a: A['N 2']
+            b: A['N']
+
+        @dimchecked
+        def f(a: 'N 2', b: 'N') -> NT:
+            return NT(a, b)
+
+        f(torch.randn(5, 2), torch.randn(5))
+
+        with self.assertRaises(ShapeError):
+            f(torch.randn(5, 2), torch.randn(4))
+
+    def test_parameter(self):
+        class NT(NamedTuple):
+            a: A['N 2']
+            b: A['N']
+
+        @dimchecked
+        def f(nt: NT) -> ('N 2', 'N'):
+            return nt.a, nt.b
+
+        f(NT(torch.randn(5, 2), torch.randn(5)))
+
+        with self.assertRaises(ShapeError):
+            f(NT(torch.randn(5, 2), torch.randn(4)))
