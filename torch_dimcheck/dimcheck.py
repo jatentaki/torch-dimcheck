@@ -151,6 +151,9 @@ class A:
     def __class_getitem__(cls, annotation: str) -> 'A':
         return A(annotation, Token.tokenize(annotation))
 
+    def __repr__(self) -> str:
+        return f'A[{self.raw}]'
+
     def parse_shape(self, shape: Tuple[int]) -> ParseDict:
         parse_dict: ParseDict = {}
             
