@@ -1,5 +1,5 @@
 import unittest, torch
-from typing import Optional, Any, NamedTuple
+from typing import Optional, Any, NamedTuple, Tuple
 from dataclasses import dataclass
 from torch_dimcheck import dimchecked, ShapeError, A
 
@@ -114,6 +114,17 @@ class ShapeCheckedTests(unittest.TestCase):
 
     def test_succeeds_tuple_return(self):
         def f(t1: A['a b'], t2: A['b a']) -> (A['a a'], A['b b']):
+            ab = t1 @ t2
+            ba = t1.T @ t2.T
+            return ab, ba
+             
+        t1 = torch.randn(5, 3)
+        t2 = torch.randn(3, 5)
+
+        dimchecked(f)(t1, t2)
+
+    def test_succeeds_typing_tuple_return(self):
+        def f(t1: A['a b'], t2: A['b a']) -> Tuple[A['a a'], A['b b']]:
             ab = t1 @ t2
             ba = t1.T @ t2.T
             return ab, ba

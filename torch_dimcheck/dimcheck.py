@@ -2,8 +2,17 @@ import re
 import inspect
 import functools
 from dataclasses import dataclass, field
-from typing import Union, Optional, Tuple, Tuple, Dict, Set, List, \
-                   OrderedDict, Any, NamedTuple
+from typing import (
+    Union,
+    Optional,
+    Tuple,
+    Dict,
+    Set,
+    List,
+    OrderedDict,
+    Any,
+    get_origin,
+)
 
 @dataclass
 class ConstError:
@@ -366,9 +375,11 @@ class Signature:
             return cls(args, None)
 
         returns = []
-        if not isinstance(sig.return_annotation, tuple):
+        if get_origin(sig.return_annotation) == tuple: # typing.Tuple
+            return_annotation = sig.return_annotation.__args__
+        elif not isinstance(sig.return_annotation, tuple): # regularize a singular item -> 1-tuple
             return_annotation = (sig.return_annotation, )
-        else:
+        else: # an actual tuple
             return_annotation = sig.return_annotation
 
         for subannotation in return_annotation:
