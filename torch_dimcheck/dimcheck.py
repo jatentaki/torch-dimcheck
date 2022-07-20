@@ -43,12 +43,15 @@ class DimcheckError(TypeError):
         self.text = text
 
     def set_func_data(self, func):
-        self.function_name = get_function_name(func)
-        cls = get_defining_class(func)
-        if cls is not None:
-            self.class_name = cls.__name__
-        else:
-            self.class_name = None
+        if not hasattr(self, 'function_name'):
+            self.function_name = get_function_name(func)
+
+        if not hasattr(self, 'class_name'):
+            cls = get_defining_class(func)
+            if cls is not None:
+                self.class_name = cls.__name__
+            else:
+                self.class_name = None
 
     def render_context(self) -> str:
         if not hasattr(self, 'class_name'):
