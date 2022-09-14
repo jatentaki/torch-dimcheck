@@ -1,1 +1,1 @@
-from .dimcheck import dimchecked, A, ShapeError
+from .dimcheck import dimchecked, A, DimcheckError, ShapeError, ParseError
